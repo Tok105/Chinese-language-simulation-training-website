@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Chinese Life Sim - Mobile Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;600&family=Mitr:wght@300;500&display=swap" rel="stylesheet">
+    <style>
+        * { -webkit-tap-highlight-color: transparent; user-select: none; }
+        body { font-family: 'Kanit', sans-serif; background: #0f172a; overflow: hidden; margin: 0; }
+        
+        /* สัดส่วนจอเกม */
+        #game-container {
+            width: 100vw;
+            max-width: 500px; /* จำกัดความกว้างให้เหมือนแอปมือถือบนจอ PC */
+            aspect-ratio: 9 / 16; /* แนวตั้งแบบ TikTok/Stories หรือเปลี่ยนเป็น 16/9 สำหรับแนวนอน */
+            background: #000;
+            position: relative;
+            overflow: hidden;
+        }
+
+        @media (min-aspect-ratio: 1/1) {
+            #game-container {
+                max-width: 900px;
+                aspect-ratio: 16 / 9;
+            }
+        }
+
+        #bg-scene {
+            background-size: cover;
+            background-position: center;
+            transition: background-image 0.6s ease-in-out;
+            filter: brightness(0.8);
+        }
+
+        #char-sprite {
+            height: 65%; /* ปรับขนาดตัวละครให้พอดี */
+            width: auto;
+            object-fit: contain;
+            transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .dialogue-box {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(8px);
+            border-top: 4px solid #f472b6;
+            box-shadow: 0 -10px 30px rgba(0,0,0,0.3);
+        }
+
+        .choice-btn {
+            animation: popIn 0.3s ease-out forwards;
+            opacity: 0;
+            transform: scale(0.9);
+        }
+
+        @keyframes popIn {
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        /* สำหรับหน้าจอมือถือเล็กๆ */
+        @media (max-height: 667px) {
+            #char-sprite { height: 55%; }
+            .dialogue-box { padding: 1rem !important; }
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen">
+
+    <div id="game-container" class="shadow-2xl sm:rounded-3xl border-x border-gray-800">
+        
+        <div id="bg-scene" class="absolute inset-0"></div>
+
+        <div class="absolute inset-0 flex justify-center items-end pb-32 pointer-events-none">
+            <img id="char-sprite" src="" alt="" class="translate-y-10">
+        </div>
+
+        <div id="choices-layer" class="absolute inset-0 z-30 flex flex-col justify-center items-center p-6 bg-black/40 hidden">
+            <div id="choices-container" class="w-full space-y-3"></div>
+        </div>
+
+        <div class="absolute bottom-0 left-0 right-0 z-20">
+            <div class="dialogue-box p-5 pb-8 min-h-[180px] relative">
+                <div id="name-tag" class="absolute -top-4 left-6 bg-pink-600 text-white px-5 py-1 rounded-full font-bold text-sm shadow-lg">
+                    Loading...
+                </div>
+                
+                <div id="dialogue-text" class="text-gray-800 text-lg font-medium leading-snug mt-2"></div>
+
+                <div id="feedback-area" class="hidden mt-3 p-3 bg-pink-50 rounded-xl border border-pink-200">
+                    <p id="pinyin-text" class="text-pink-600 font-bold text-sm"></p>
+                    <p id="trans-text" class="text-gray-600 text-xs italic"></p>
+                </div>
+
+                <button id="next-btn" onclick="nextScene()" class="hidden absolute bottom-4 right-4 bg-indigo-600 text-white px-6 py-2 rounded-full font-bold shadow-lg active:scale-90 transition-transform">
+                    ถัดไป ➔
+                </button>
+            </div>
+        </div>
+    </div>
+
+<script>
+const gameData = [
+    {
+        name: "Mei Mei (พนักงาน)",
+        scene: "./รูปงาน/S.png",
+        character: "./รูปงาน/AAA.png",
+        text: "ยินดีต้อนรับค่ะ! Nǐ xiǎng hē shénme? (你想喝什么?) รับอะไรดีคะ?",
+        choices: [
+            { text: "我不要 (Wǒ bù yào)", correct: false, pinyin: "Wǒ bù yào", trans: "แปลว่า: ฉันไม่เอา" },
+            { text: "我要一杯咖啡 (Wǒ yào yī bēi kāfēi)", correct: true, pinyin: "Wǒ yào yī bēi kāfēi", trans: "แปลว่า: ฉันขอรับกาแฟหนึ่งแก้วครับ" },
+            { text: "我是学生 (Wǒ shì xuéshēng)", correct: false, pinyin: "Wǒ shì xuéshēng", trans: "แปลว่า: ฉันเป็นนักเรียน" }
+        ]
+    },
+    {
+        name: "ป้าเจ้าของร้านผลไม้",
+        scene: "./รูปงาน/AAAA.png",
+        character: "./รูปงาน/",
+        text: "แอปเปิ้ลสดๆ จ้า! Nǐ yào mǎi shénme? (你要买什么?) สนใจซื้ออะไรดีจ๊ะ?",
+        choices: [
+            { text: "这个多少钱? (Zhège duōshǎo qián?)", correct: true, pinyin: "Zhège duōshǎo qián?", trans: "แปลว่า: อันนี้ราคาเท่าไหร่ครับ?" },
+            { text: "我很漂亮 (Wǒ hěn piàoliang)", correct: false, pinyin: "Wǒ hěn piàoliang", trans: "แปลว่า: ฉันสวยมาก" },
+            { text: "再见 (Zàijiàn)", correct: false, pinyin: "Zàijiàn", trans: "แปลว่า: ลาก่อน" }
+        ]
+    },
+    {
+        name: "เสี่ยวหมิง (เพื่อนสนิท)",
+        scene: "./รูปงาน/Gemini_Generated_Image_49rz6h49rz6h49rz.png",
+        character: "./รูปงาน/MING.png",
+        text: "เหงื่อออกซะสะใจเลย! Wǒmen qù dǎ lánqiú ba? (我们打篮球吧?) ไปเล่นบาสกันต่อไหม?",
+        choices: [
+            { text: "好啊, 走吧! (Hǎo a, zǒu ba!)", correct: true, pinyin: "Hǎo a, zǒu ba!", trans: "แปลว่า: ดีเลย ไปกันเถอะ!" },
+            { text: "我不喜欢吃菜 (Wǒ bù xǐhuān chī cài)", correct: false, pinyin: "Wǒ bù xǐhuān chī cài", trans: "แปลว่า: ฉันไม่ชอบกินผัก" },
+            { text: "你会说英语吗? (Nǐ huì shuō yīngyǔ ma?)", correct: false, pinyin: "Nǐ huì shuō yīngyǔ ma?", trans: "แปลว่า: คุณพูดภาษาอังกฤษได้ไหม?" }
+        ]
+    },
+    {
+        name: "ลุงคนขับรถเมล์",
+        scene: "./รูปงาน/Gemini_Generated_Image_mhe4kjmhe4kjmhe4.png",
+        character: "./รูปงาน/",
+        text: "จะไปไหนรึพ่อหนุ่ม? Nǐ yào qù nǎlǐ? (你要去哪里?) เธอจะไปไหนจ๊ะ?",
+        choices: [
+            { text: "我想去飞机场 (Wǒ xiǎng qù fēijīchǎng)", correct: true, pinyin: "Wǒ xiǎng qù fēijīchǎng", trans: "แปลว่า: ผมอยากไปสนามบินครับ" },
+            { text: "我要上车 (Wǒ yào shàng chē)", correct: true, pinyin: "Wǒ yào shàng chē", trans: "แปลว่า: ฉันต้องการขึ้นรถ (ใช้ได้เหมือนกัน)" },
+            { text: "老师好 (Lǎoshī hǎo)", correct: false, pinyin: "Lǎoshī hǎo", trans: "แปลว่า: สวัสดีคุณครู" }
+        ]
+    },
+    {
+        name: "พนักงานร้านเสื้อผ้า",
+        scene: "./รูปงาน/Gemini_Generated_Image_5coe8l5coe8l5coe.png",
+        character: "./รูปงาน/STAFF.png",
+        text: "ชุดนี้เหมาะกับคุณมากเลยค่ะ! Nǐ yào shì yīxià ma? (你要试一下吗?) คุณอยากลองสวมดูไหมคะ?",
+        choices: [
+            { text: "好的, 谢谢 (Hǎo de, xièxiè)", correct: true, pinyin: "Hǎo de, xièxiè", trans: "แปลว่า: ตกลงครับ ขอบคุณครับ" },
+            { text: "太大了 (Tài dà le)", correct: false, pinyin: "Tài dà le", trans: "แปลว่า: มันใหญ่เกินไป" },
+            { text: "苹果很甜 (Píngguǒ hěn tián)", correct: false, pinyin: "Píngguǒ hěn tián", trans: "แปลว่า: แอปเปิ้ลหวานมาก" }
+        ]
+    },
+    {
+        name: "คุณแม่",
+        scene: "./รูปงาน/Gemini_Generated_Image_1l4fh1l4fh1l4fh1.png",
+        character: "./รูปงาน/",
+        text: "รีบแต่งตัวเร็วเข้า! Xiànzài jǐ diǎn le? (现在几点了?) ตอนนี้กี่โมงแล้วเนี่ย?",
+        choices: [
+            { text: "现在八点了 (Xiànzài bā diǎn le)", correct: true, pinyin: "Xiànzài bā diǎn le", trans: "แปลว่า: ตอนนี้ 8 โมงแล้วครับ" },
+            { text: "我身体很好 (Wǒ shēntǐ hěn hǎo)", correct: false, pinyin: "Wǒ shēntǐ hěn hǎo", trans: "แปลว่า: ร่างกายฉันแข็งแรงดี" },
+            { text: "不客气 (Bù kèqì)", correct: false, pinyin: "Bù kèqì", trans: "แปลว่า: ไม่เป็นไร (ตอบรับการขอบคุณ)" }
+        ]
+    },
+    {
+        name: "น้องชาย",
+        scene: "./รูปงาน/Gemini_Generated_Image_q1v2veq1v2veq1v2.png",
+        character: "./รูปงาน/",
+        text: "พรุ่งนี้พี่จะไปส่งผมไหม? Míngtiān nǐ qù xuéxiào ma? (明天你去学校吗?) พรุ่งนี้พี่ไปโรงเรียนไหม?",
+        choices: [
+            { text: "跟我一起去吧 (Gēn wǒ yīqǐ qù ba)", correct: true, pinyin: "Gēn wǒ yīqǐ qù ba", trans: "แปลว่า: ไปกับพี่นะ (ไปพร้อมกัน)" },
+            { text: "你是我的弟弟 (Nǐ shì wǒ de dìdi)", correct: false, pinyin: "Nǐ shì wǒ de dìdi", trans: "แปลว่า: คุณคือน้องชายของฉัน" },
+            { text: "他在吃饭 (Tā zài chīfàn)", correct: false, pinyin: "Tā zài chīfàn", trans: "แปลว่า: เขาพึ่งกินข้าว" }
+        ]
+    },
+    {
+        name: "หัวหน้าฝ่ายบุคคล (HR)",
+        scene: "./รูปงาน/Gemini_Generated_Image_5yk2ti5yk2ti5yk2.png",
+        character: "./รูปงาน/",
+        text: "แนะนำตัวหน่อยครับ Qǐng jièshào yīxià nǐ zìjǐ (请介绍一下你自己) เชิญแนะนำตัวเองหน่อยครับ",
+        choices: [
+            { text: "我叫... (Wǒ jiào...)", correct: true, pinyin: "Wǒ jiào...", trans: "แปลว่า: ผมชื่อว่า... (ใช้แนะนำตัวเริ่มต้น)" },
+            { text: "我不认识他 (Wǒ bù rènshí tā)", correct: false, pinyin: "Wǒ bù rènshí tā", trans: "แปลว่า: ฉันไม่รู้จักเขา" },
+            { text: "这是什么? (Zhè shì shénme?)", correct: false, pinyin: "Zhè shì shénme?", trans: "แปลว่า: นี่คืออะไร?" }
+        ]
+    }
+];    let currentStep = 0;
+
+    function speak(text) {
+        window.speechSynthesis.cancel();
+        const chineseMatch = text.match(/[\u4e00-\u9fa5]+/g);
+        const toSpeak = chineseMatch ? chineseMatch.join('') : text;
+        const utterance = new SpeechSynthesisUtterance(toSpeak);
+        utterance.lang = 'zh-CN';
+        utterance.rate = 0.85;
+        window.speechSynthesis.speak(utterance);
+    }
+
+    function renderScene() {
+        const data = gameData[currentStep];
+        if(!data) return;
+
+        // Reset UI
+        document.getElementById('choices-layer').classList.add('hidden');
+        document.getElementById('feedback-area').classList.add('hidden');
+        document.getElementById('next-btn').classList.add('hidden');
+        
+        // Update Content
+        document.getElementById('bg-scene').style.backgroundImage = `url('${data.scene}')`;
+        const charImg = document.getElementById('char-sprite');
+        charImg.src = data.character;
+        charImg.style.transform = 'translateY(0)'; // ให้ตัวละครเลื่อนขึ้นมา
+
+        document.getElementById('name-tag').innerText = data.name;
+        document.getElementById('dialogue-text').innerText = data.text;
+        
+        speak(data.text);
+
+        // รอสักพักแล้วแสดงตัวเลือก
+        setTimeout(() => {
+            const container = document.getElementById('choices-container');
+            container.innerHTML = '';
+            data.choices.forEach((choice, i) => {
+                const btn = document.createElement('button');
+                btn.className = "choice-btn w-full bg-white text-gray-800 font-bold py-4 px-6 rounded-2xl shadow-xl active:bg-pink-500 active:text-white transition-all text-left border-l-8 border-pink-500";
+                btn.style.animationDelay = (i * 0.1) + "s";
+                btn.innerText = choice.text;
+                btn.onclick = () => handleChoice(choice);
+                container.appendChild(btn);
+            });
+            document.getElementById('choices-layer').classList.remove('hidden');
+        }, 1000);
+    }
+
+    function handleChoice(choice) {
+        speak(choice.text);
+        document.getElementById('choices-layer').classList.add('hidden');
+        
+        const feedback = document.getElementById('feedback-area');
+        const diagText = document.getElementById('dialogue-text');
+        
+        document.getElementById('pinyin-text').innerText = choice.pinyin;
+        document.getElementById('trans-text').innerText = choice.trans;
+        feedback.classList.remove('hidden');
+
+        if(choice.correct) {
+            diagText.innerText = "ถูกต้องแล้ว! (Hěn hǎo!) 🌟";
+            document.getElementById('next-btn').classList.remove('hidden');
+        } else {
+            diagText.innerText = "อ๊ะ! ยังไม่ใช่จ้ะ ลองดูใหม่นะ 😅";
+            setTimeout(() => {
+                document.getElementById('choices-layer').classList.remove('hidden');
+                feedback.classList.add('hidden');
+            }, 2500);
+        }
+    }
+
+    function nextScene() {
+        if (currentStep < gameData.length - 1) {
+            currentStep++;
+            renderScene();
+        } else {
+            alert("จบการเรียนรู้บทนี้แล้ว! ทำได้ดีมากครับ");
+            currentStep = 0;
+            renderScene();
+        }
+    }
+
+    window.onload = renderScene;
+</script>
+</body>
+</html>
